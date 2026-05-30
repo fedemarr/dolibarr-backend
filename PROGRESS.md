@@ -181,3 +181,55 @@ API disponible en http://localhost:8000  (Swagger en /docs)
 - easyocr y PyMuPDF NO se instalaron explicitamente; el motor OCR degrada elegantemente y solo usa la extraccion nativa de pdfplumber. Para PDFs escaneados habria que `py -m pip install easyocr pymupdf` (descarga modelos ~64MB la primera vez).
 - python-magic-bin se instalo OK pero no se usa todavia; quedo disponible para validacion futura por content-type real.
 - Celery worker bajo Windows requiere `--pool=solo` (no soporta prefork).
+
+---
+
+## Sesion 4 — Bugfix + Deploy
+
+- ✅ [S4-BUG 1] Event loop fix en workers — reemplazado asyncio.run() por _ejecutar_async() con loop nuevo por ejecucion en pdf_tasks.py y reconcile_tasks.py
+- ✅ [S4-BUG 2] Swagger con boton Authorize — custom_openapi() con BearerAuth SecurityScheme en main.py
+- ✅ [S4-BUG 3] Token extendido a 1440 minutos (24h) en desarrollo — .env actualizado
+- ✅ [S4-CORS] CORS ampliado a puertos 3000-3003 + soporte FRONTEND_URL para produccion
+- ✅ [S4-CONFIG] config.py acepta DATABASE_URL de Railway (reemplaza postgres:// por postgresql+asyncpg://)
+- ✅ [S4-HEALTH] /health extendido — verifica DB y Redis, retorna estado degradado si algo falla
+- ✅ [S4-DEPLOY-B] Archivos de deploy backend creados: Procfile, railway.json, nixpacks.toml, requirements.txt (84 deps), .gitignore, railway.env.example
+- ✅ [S4-DEPLOY-F] Archivos de deploy frontend creados: vercel.json, .env.production, next.config.ts con headers de seguridad
+- ✅ [S4-GIT-B] git init + commit inicial backend (69786bf)
+- ✅ [S4-GIT-F] git init + commit inicial frontend
+- ✅ [S4-TESTS] 24/24 tests siguen pasando despues de todos los cambios
+- ✅ [S4-DEPLOY-DOC] DEPLOY.md creado con instrucciones paso a paso para Railway + Vercel
+
+## Estado final del proyecto
+
+### Tests
+24/24 pasando (2.78s)
+
+### Comandos para desarrollo local
+
+```powershell
+# Terminal 1 — Backend
+cd C:\Users\fede\Documents\automatizaciondolibar
+.\venv\Scripts\Activate.ps1
+py -m uvicorn app.main:app --reload --port 8000
+
+# Terminal 2 — Worker Celery
+.\venv\Scripts\Activate.ps1
+py -m celery -A app.workers.celery_app worker --loglevel=info --pool=solo --without-heartbeat --without-gossip --without-mingle
+
+# Terminal 3 — Frontend
+cd C:\proyectos\dolibarr-frontend
+npm run dev -- --port 3002
+```
+
+### URLs locales
+- Frontend: http://localhost:3002
+- API: http://localhost:8000
+- Swagger: http://localhost:8000/docs (con boton Authorize)
+- Login: admin@demo.com / Admin1234!
+
+### Pendiente para conectar Dolibarr real
+1. Subir repos a GitHub
+2. Deploy backend en Railway (ver DEPLOY.md)
+3. Deploy frontend en Vercel (ver DEPLOY.md)
+4. Obtener API key real de Dolibarr y actualizar variable en Railway
+5. Conectar Slack webhook y Resend para notificaciones reales
