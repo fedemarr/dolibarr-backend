@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["python312", "libmagic", "poppler_utils"]
+nixPkgs = ["python312", "file", "poppler_utils"]
 
 [phases.install]
 cmds = ["pip install -r requirements.txt"]
