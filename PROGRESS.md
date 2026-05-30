@@ -1,0 +1,183 @@
+# Progreso de Automatizacion Dolibarr
+
+Implementacion iniciada el 2026-05-27.
+
+## Resumen de pasos
+
+- [PASO 1] OK Entorno virtual creado e instaladas todas las dependencias (fastapi, sqlalchemy, alembic, celery, pdfplumber, jose, passlib, boto3, structlog, pytest, psycopg2-binary, etc.)
+- [PASO 2] OK Estructura de carpetas y archivos __init__.py creados
+- [PASO 3] OK Archivo .env creado con variables de configuracion
+- [PASO 4] OK app/core/config.py implementado con Pydantic Settings
+- [PASO 5] OK app/core/database.py implementado con motor async SQLAlchemy + asyncpg (usa NullPool bajo pytest)
+- [PASO 6] OK app/core/exceptions.py y app/core/redis.py implementados
+- [PASO 7] OK app/core/security.py implementado (bcrypt + JWT access/refresh)
+- [PASO 8] OK Alembic inicializado, migrations 0001_initial_schema y 0002_seed_data ejecutadas contra dolibarr_automation. Usuario admin@demo.com creado con password Admin1234! y 5 reglas contables. (Nota: se hizo downgrade de bcrypt a 4.0.1 por incompatibilidad con passlib 1.7.4 + bcrypt 5.x)
+- [PASO 9] OK Modulo auth: models (Usuario, Organizacion), schemas Pydantic, service y endpoints /login /refresh /yo
+- [PASO 10] OK Motor OCR (pdfplumber + easyocr lazy) y parsers (base, afip_vep, afip_iva, generic)
+- [PASO 11] OK Clasificador de documentos por palabras clave
+- [PASO 12] OK Motor de reglas contables (carga reglas de DB, evalua patrones JSONB) y servicio orquestador
+- [PASO 13] OK Cliente Dolibarr (HTTP async + retry exponencial), invoices.py y payments.py
+- [PASO 14] OK Maquina de estados (transiciones validas), events.py (auditoria) y service.py (scoring de conciliacion)
+- [PASO 15] OK Modulo documentos: models, schemas, repository, service y endpoints REST (/subir /detalle /listar /aprobar /reintentar /preview)
+- [PASO 16] OK Workers Celery: celery_app.py, pdf_tasks (procesar_pdf, sincronizar_con_dolibarr), bank_tasks (placeholder), reconcile_tasks (conciliacion automatica con scoring)
+- [PASO 17] OK app/main.py implementado (FastAPI con CORS, manejador de errores, routers v1 y endpoint /health)
+- [PASO 18] OK Tests: conftest, 4 tests de OCR parsers, 6 tests de state machine, 3 tests de bank matcher, 4 tests de integracion auth
+- [PASO 19] OK Verificacion: 17/17 tests pasando, servidor uvicorn levanta correctamente, /health responde 200, login real con admin@demo.com retorna tokens
+- [PASO 20] OK Documento PROGRESS.md actualizado con resumen final
+
+## Endpoints implementados y funcionando
+
+| Metodo | Ruta                                | Descripcion                              |
+|--------|-------------------------------------|------------------------------------------|
+| GET    | /health                             | Verificacion de estado del sistema       |
+| GET    | /docs                               | Swagger UI                               |
+| GET    | /redoc                              | ReDoc                                    |
+| POST   | /api/v1/auth/login                  | Login con email + password               |
+| POST   | /api/v1/auth/refresh                | Refrescar tokens                         |
+| GET    | /api/v1/auth/yo                     | Datos del usuario autenticado            |
+| POST   | /api/v1/documentos/subir            | Subir PDF (multipart/form-data)          |
+| GET    | /api/v1/documentos                  | Listar paginado con filtros              |
+| GET    | /api/v1/documentos/{id}             | Detalle completo de un documento         |
+| PATCH  | /api/v1/documentos/{id}/aprobar     | Aprobar (con correcciones opcionales)    |
+| PATCH  | /api/v1/documentos/{id}/reintentar  | Reintentar procesamiento si esta en ERROR|
+| GET    | /api/v1/documentos/{id}/preview     | Descargar/visualizar el PDF original     |
+
+## Tests
+
+17/17 tests pasando:
+- 4 tests integracion auth (test_auth.py)
+- 6 tests maquina de estados (test_state_machine.py)
+- 4 tests parsers OCR (test_ocr_parsers.py)
+- 3 tests bank matcher (test_bank_matcher.py)
+
+## Como iniciar el servidor
+
+Desde PowerShell, parado en C:\Users\fede\Documents\automatizaciondolibar:
+
+```powershell
+# 1) Activar entorno virtual
+& "C:\Users\fede\Documents\automatizaciondolibar\venv\Scripts\Activate.ps1"
+
+# 2) (Opcional) Reaplicar migrations
+py -m alembic upgrade head
+
+# 3) Iniciar API
+py -m uvicorn app.main:app --reload --port 8000
+
+# 4) Iniciar worker Celery (en otra consola, requiere Redis corriendo)
+py -m celery -A app.workers.celery_app:app_celery worker --loglevel=info --pool=solo
+
+# 5) Iniciar Celery beat (programador de tareas periodicas, opcional)
+py -m celery -A app.workers.celery_app:app_celery beat --loglevel=info
+```
+
+API disponible en http://localhost:8000  (Swagger en /docs)
+
+## Credenciales de prueba
+
+- Email: admin@demo.com
+- Password: Admin1234!
+- Rol: ADMIN
+- Organizacion: Agencia Demo SA (CUIT 30-71234567-8)
+- IDs fijos (utiles para tests):
+  - org_id: 00000000-0000-0000-0000-000000000001
+  - usuario_id: 00000000-0000-0000-0000-000000000002
+
+## Conexion a la base de datos
+
+- Host: localhost:5432
+- Database: dolibarr_automation
+- Usuario: automation_user / automation_pass_dev
+- 5 reglas contables sembradas (VEP-IVA, VEP-Ganancias, SUSS, IIBB, default)
+
+## Sesion 2 (iniciada 2026-05-29)
+
+- [PASO 1] OK Modulo banking/parsers creado: base.py, csv_parser.py (formato argentino), ofx_parser.py (con fallback regex). Dependencia ofxparse 0.21 instalada.
+- [PASO 2] OK Modulo banking: models.py (re-exporta MovimientoBancario), schemas.py, repository.py (con deduplicacion por referencia o fecha+monto+desc), service.py (importar_archivo).
+- [PASO 3] OK Endpoints bancarios en app/api/v1/banking.py: POST /importar, GET /movimientos, GET /movimientos/{id}, POST /conciliar, PATCH /movimientos/{id}/match. Tambien agregada task Celery conciliar_org en reconcile_tasks.py.
+- [PASO 4] OK Panel de conciliacion en app/api/v1/reconciliation.py: GET /pendientes (con sugerencias scoreadas), POST /confirmar, GET /historial. Reusa calcular_score y clasificar_confianza existentes. LogAuditoria ya existia en documents/models.py.
+- [PASO 5] OK Endpoints de reglas contables en app/api/v1/rules.py: GET, POST, PUT/{id}, DELETE/{id}, POST /reordenar. Schemas en app/modules/accounting/schemas.py.
+- [PASO 6] OK Endpoints de reportes en app/api/v1/reports.py: GET /resumen (por periodo), GET /vencimientos-proximos, GET /actividad.
+- [PASO 7] OK Rate limiting con slowapi: app/core/limiter.py (deshabilitado bajo pytest), middleware en main.py, decoradores @limiter.limit en /login (10/min) y /subir (20/min).
+- [PASO 8] OK Modulo notifications: channels/slack.py, channels/email.py (ambos best-effort, loguean si placeholder), service.py con ServicioNotificaciones. Integrado en pdf_tasks (revision + error_sync) y reconcile_tasks (conciliacion automatica).
+- [PASO 9] OK Tests integracion: tests/integration/test_documentos.py (4 tests: listar, subir invalido, no encontrado, aislamiento multi-tenant), tests/integration/test_bancario.py (3 tests: importar csv valido, csv malformado, listar). 24/24 pasan.
+- [PASO 10] OK Routers banking, reconciliation, rules y reports registrados en app/main.py (ya hecho en PASO 7). README.md creado en raiz.
+- [PASO 11] OK Verificacion final: 24/24 tests pasan; uvicorn arranca y /health responde 200; 25 rutas API + 5 utilitarias registradas.
+
+## Resumen final Sesion 2
+
+### Tests
+24/24 pasan (17 originales + 7 nuevos):
+- 4 integracion auth
+- 4 integracion documentos (listar, subir invalido, no encontrado, aislamiento multi-tenant)
+- 3 integracion bancario (importar csv valido, csv malformado, listar)
+- 3 unit bank_matcher
+- 4 unit ocr_parsers
+- 6 unit state_machine
+
+### Endpoints totales (25 API)
+
+| Metodo | Ruta                                       | Descripcion                              |
+|--------|--------------------------------------------|------------------------------------------|
+| GET    | /health                                    | Estado del sistema                       |
+| POST   | /api/v1/auth/login                         | Login (rate-limited 10/min)              |
+| POST   | /api/v1/auth/refresh                       | Refresh tokens                           |
+| GET    | /api/v1/auth/yo                            | Usuario autenticado                      |
+| POST   | /api/v1/documentos/subir                   | Subir PDF (rate-limited 20/min)          |
+| GET    | /api/v1/documentos                         | Listar paginado                          |
+| GET    | /api/v1/documentos/{id}                    | Detalle                                  |
+| PATCH  | /api/v1/documentos/{id}/aprobar            | Aprobar y sincronizar                    |
+| PATCH  | /api/v1/documentos/{id}/reintentar         | Reintento si ERROR                       |
+| GET    | /api/v1/documentos/{id}/preview            | Descargar PDF                            |
+| POST   | /api/v1/bancario/importar                  | Importar extracto CSV u OFX              |
+| GET    | /api/v1/bancario/movimientos               | Listar movimientos paginado              |
+| GET    | /api/v1/bancario/movimientos/{id}          | Detalle de movimiento                    |
+| POST   | /api/v1/bancario/conciliar                 | Disparar conciliacion manual             |
+| PATCH  | /api/v1/bancario/movimientos/{id}/match    | Match manual movimiento-documento        |
+| GET    | /api/v1/conciliacion/pendientes            | Movimientos no conciliados + sugerencias |
+| POST   | /api/v1/conciliacion/confirmar             | Confirmar match manual                   |
+| GET    | /api/v1/conciliacion/historial             | Ultimas conciliaciones                   |
+| GET    | /api/v1/reglas                             | Listar reglas contables                  |
+| POST   | /api/v1/reglas                             | Crear regla                              |
+| PUT    | /api/v1/reglas/{id}                        | Actualizar regla                         |
+| DELETE | /api/v1/reglas/{id}                        | Desactivar regla                         |
+| POST   | /api/v1/reglas/reordenar                   | Reordenar prioridades                    |
+| GET    | /api/v1/reportes/resumen                   | Resumen por periodo                      |
+| GET    | /api/v1/reportes/vencimientos-proximos     | Vencimientos en N dias                   |
+| GET    | /api/v1/reportes/actividad                 | Feed de actividad reciente               |
+
+### Pendiente para Sesion 3
+
+1. Integracion real con S3 (PDFs hoy van a C:\tmp\dolibarr_pdfs)
+2. Probar sincronizacion con un Dolibarr real (DOLIBARR_API_KEY hoy es placeholder)
+3. Configurar webhook real de Slack + API key de Resend (hoy ambos son placeholder)
+4. Frontend Next.js que consuma estos 25 endpoints
+5. Tests end-to-end del worker procesar_pdf con un PDF real
+6. Tests para el motor de reglas contables
+7. Ampliar parsers OCR (DECLARACION_GANANCIAS, SUSS detallado, IIBB ARBA/AGIP)
+8. Logs estructurados con structlog en lugar de print
+9. Hardening: validacion python-magic en subida de PDFs, validacion de tamano max, etc.
+10. Health check extendido: verificar DB + Redis + Dolibarr
+
+## Pendiente para Sesion 2
+
+1. Importacion real de extractos bancarios (CSV / OFX / XLS) en app/workers/bank_tasks.py
+2. Endpoints REST para movimientos bancarios y conciliacion manual
+3. Integracion real con S3 (actualmente los PDFs se guardan en C:\tmp\dolibarr_pdfs)
+4. Verificar y probar la sincronizacion con un Dolibarr real (actualmente DOLIBARR_API_KEY es placeholder)
+5. Implementar notificaciones (Resend, Slack webhook)
+6. Tests adicionales:
+   - Tests integracion para endpoints de documentos
+   - Tests end-to-end del worker procesar_pdf con un PDF real
+   - Tests para el motor de reglas contables
+7. Ampliar parsers OCR (DECLARACION_GANANCIAS, SUSS detallado, IIBB ARBA/AGIP)
+8. Rate-limiting con slowapi en endpoints publicos (login, refresh)
+9. Logs estructurados con structlog en lugar de print
+
+## Notas importantes
+
+- Python 3.14.5 + Windows 11 tiene una incompatibilidad con asyncpg cuando se reutilizan conexiones entre tests; se solucio usando NullPool cuando se detecta PYTEST_CURRENT_TEST en el entorno.
+- bcrypt 5.x rompe passlib 1.7.4 (`module 'bcrypt' has no attribute '__about__'`). Se fijo bcrypt==4.0.1.
+- easyocr y PyMuPDF NO se instalaron explicitamente; el motor OCR degrada elegantemente y solo usa la extraccion nativa de pdfplumber. Para PDFs escaneados habria que `py -m pip install easyocr pymupdf` (descarga modelos ~64MB la primera vez).
+- python-magic-bin se instalo OK pero no se usa todavia; quedo disponible para validacion futura por content-type real.
+- Celery worker bajo Windows requiere `--pool=solo` (no soporta prefork).

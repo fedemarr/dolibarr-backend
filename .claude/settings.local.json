@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem C:\\\\Users\\\\fede\\\\Documents\\\\automatizaciondolibar\\\\tests -Recurse | Where-Object { -not $_.PSIsContainer } | Select-Object FullName)",
+      "PowerShell(& \"C:\\\\Users\\\\fede\\\\Documents\\\\automatizaciondolibar\\\\venv\\\\Scripts\\\\python.exe\" -m pip install ofxparse 2>&1)",
+      "PowerShell(& \"C:\\\\Users\\\\fede\\\\Documents\\\\automatizaciondolibar\\\\venv\\\\Scripts\\\\python.exe\" -m pip install slowapi 2>&1)",
+      "PowerShell(cd C:\\\\Users\\\\fede\\\\Documents\\\\automatizaciondolibar; $proc = Start-Process -FilePath \"C:\\\\Users\\\\fede\\\\Documents\\\\automatizaciondolibar\\\\venv\\\\Scripts\\\\python.exe\" -ArgumentList \"-m\",\"uvicorn\",\"app.main:app\",\"--port\",\"8765\" -PassThru -WindowStyle Hidden -RedirectStandardOutput \"C:\\\\Users\\\\fede\\\\Documents\\\\automatizaciondolibar\\\\uvicorn_test.log\" -RedirectStandardError \"C:\\\\Users\\\\fede\\\\Documents\\\\automatizaciondolibar\\\\uvicorn_test.err.log\"; Start-Sleep -Seconds 4; try { $r = Invoke-WebRequest -Uri \"http://127.0.0.1:8765/health\" -UseBasicParsing -TimeoutSec 5; Write-Output \"STATUS: $\\($r.StatusCode\\)\"; Write-Output \"BODY: $\\($r.Content\\)\" } catch { Write-Output \"ERROR: $_\" } finally { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue })",
+      "Read(//c/proyectos/**)",
+      "PowerShell(if \\(-not \\(Test-Path \"C:\\\\proyectos\\\\dolibarr-frontend\\\\PROGRESS.md\"\\)\\) { New-Item -ItemType File -Path \"C:\\\\proyectos\\\\dolibarr-frontend\\\\PROGRESS.md\" -Force | Out-Null; \"# Sesion 3 - Frontend Dolibarr Automation`n`n## Estado`n\" | Out-File -FilePath \"C:\\\\proyectos\\\\dolibarr-frontend\\\\PROGRESS.md\" -Encoding utf8 }; Get-Content \"C:\\\\proyectos\\\\dolibarr-frontend\\\\PROGRESS.md\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Set-Location \"C:\\\\proyectos\\\\dolibarr-frontend\"; $comps = @\\(\"button\",\"input\",\"label\",\"select\",\"dialog\",\"table\",\"badge\",\"card\",\"dropdown-menu\",\"sheet\",\"tooltip\",\"alert-dialog\",\"form\",\"separator\",\"skeleton\",\"progress\",\"popover\"\\); foreach \\($c in $comps\\) { Write-Output \"===INSTALANDO $c===\"; npx --yes shadcn@latest add $c --yes --overwrite 2>&1 | Out-String })",
+      "PowerShell(Get-ChildItem \"C:\\\\proyectos\\\\dolibarr-frontend\\\\src\" -Recurse -Name | Where-Object { $_ -notmatch \"__pycache__|\\\\.pyc|node_modules\" } | Sort-Object | Select-Object -First 80)",
+      "PowerShell(Start-Process powershell -ArgumentList \"-NoExit\", \"-Command\", \"cd 'C:\\\\proyectos\\\\dolibarr-frontend'; npm run dev\" -WindowStyle Normal; Start-Sleep -Seconds 8; Write-Output \"Servidor iniciado\")",
+      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue)"
+    ],
+    "additionalDirectories": [
+      "C:\\proyectos\\dolibarr-frontend",
+      "C:\\proyectos"
+    ]
+  }
+}
