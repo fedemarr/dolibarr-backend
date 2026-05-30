@@ -62,8 +62,8 @@ def crear_app() -> FastAPI:
     app.include_router(reports.router, tags=["reportes"])
 
     @app.get("/health", tags=["sistema"])
-    async def verificar_estado(db: AsyncSession = Depends(get_db)):
-        """Health check extendido — verifica DB y Redis ademas del proceso."""
+    async def verificar_estado():
+        """Health check — siempre retorna 200 para que Railway no mate el proceso."""
         estado = {
             "estado": "ok",
             "version": "1.0.0",
@@ -71,9 +71,12 @@ def crear_app() -> FastAPI:
             "servicios": {},
         }
 
-        # Verificar base de datos
+        # Verificar base de datos (sin dependency injection para no fallar si DB no arranco)
         try:
-            await db.execute(text("SELECT 1"))
+            from app.core.database import SessionLocal
+            from sqlalchemy import text
+            async with SessionLocal() as db:
+                await db.execute(text("SELECT 1"))
             estado["servicios"]["base_datos"] = "ok"
         except Exception as e:
             estado["servicios"]["base_datos"] = f"error: {str(e)[:100]}"
