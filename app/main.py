@@ -82,12 +82,19 @@ def crear_app() -> FastAPI:
             estado["servicios"]["base_datos"] = f"error: {str(e)[:100]}"
             estado["estado"] = "degradado"
 
-        # Verificar Redis (leer directamente del entorno para evitar cache de Pydantic)
+        # Verificar Redis
         try:
             import os
             import redis as redis_sync
-            redis_url = os.getenv("REDIS_URL") or config.REDIS_URL
-            estado["debug_redis_url"] = redis_url[:30] + "..."  # solo para debug
+            # Railway puede usar distintos nombres para la URL de Redis
+            redis_url = (
+                os.getenv("REDIS_URL")
+                or os.getenv("REDIS_PRIVATE_URL")
+                or os.getenv("REDISURL")
+                or os.getenv("REDIS_TLS_URL")
+                or config.REDIS_URL
+            )
+            estado["debug_redis_url"] = redis_url[:40] + "..."
             r = redis_sync.from_url(redis_url, socket_connect_timeout=2)
             r.ping()
             estado["servicios"]["redis"] = "ok"
