@@ -57,6 +57,23 @@ class ClienteDolibarr:
         except httpx.RequestError:
             return None
 
+    async def crear_movimiento_bancario(self, datos: dict) -> dict | None:
+        """
+        Crea un movimiento bancario en Dolibarr via API REST.
+        Endpoint: POST /bankaccounts/{id}/lines
+        """
+        try:
+            bank_id = datos.pop("bankaccount_id", 1)
+            respuesta = await self._cliente.post(
+                f"/bankaccounts/{bank_id}/lines",
+                json=datos
+            )
+            if respuesta.status_code in (200, 201):
+                return respuesta.json()
+            return None
+        except Exception:
+            return None
+
     async def verificar_conexion(self) -> bool:
         """Verifica que Dolibarr este accesible y la API key sea valida."""
         try:

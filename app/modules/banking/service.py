@@ -36,6 +36,7 @@ async def importar_archivo(
     importados = 0
     duplicados = 0
     creditos_ids: list[str] = []  # IDs de movimientos CREDITO recien creados
+    todos_los_ids: list[str] = []  # IDs de todos los movimientos importados
 
     for mov in movimientos_parseados:
         try:
@@ -53,6 +54,7 @@ async def importar_archivo(
             movimiento, es_nuevo = await repository.crear_movimiento(datos, org_id, db)
             if es_nuevo:
                 importados += 1
+                todos_los_ids.append(str(movimiento.id))
                 # Recolectar IDs de creditos (cobros de clientes) para conciliacion
                 if (mov.tipo or "").upper() == "CREDITO":
                     creditos_ids.append(str(movimiento.id))
@@ -66,6 +68,14 @@ async def importar_archivo(
         try:
             from app.workers.bank_tasks import conciliar_facturas_clientes
             conciliar_facturas_clientes.delay(str(org_id), creditos_ids)
+        except Exception:
+            pass
+
+    # Disparar sincronización de movimientos con Dolibarr (asigna cuentas contables)
+    if importados > 0 and todos_los_ids:
+        try:
+            from app.workers.bank_tasks import sincronizar_movimientos_dolibarr
+            sincronizar_movimientos_dolibarr.delay(str(org_id), todos_los_ids)
         except Exception:
             pass
 

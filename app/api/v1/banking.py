@@ -18,6 +18,31 @@ from app.core.exceptions import ErrorApp
 router = APIRouter(prefix="/api/v1/bancario")
 
 
+@router.post("/clasificar")
+async def clasificar_movimiento_endpoint(
+    body: dict,
+    usuario=Depends(obtener_usuario_actual),
+):
+    """
+    Clasifica un movimiento bancario según su descripción y tipo,
+    retornando la cuenta contable que le corresponde según las reglas Galicia.
+    Body: {"descripcion": "...", "tipo": "DEBITO"|"CREDITO"}
+    """
+    from app.modules.banking.reglas_galicia import clasificar_movimiento
+    descripcion = str(body.get("descripcion") or "")
+    tipo = str(body.get("tipo") or "DEBITO").upper()
+    regla = clasificar_movimiento(descripcion, tipo)
+    return {
+        "exito": True,
+        "datos": {
+            "codigo_cuenta": regla["codigo_cuenta"],
+            "nombre_cuenta": regla["nombre_cuenta"],
+            "regla": regla["nombre"],
+            "prioridad": regla["prioridad"],
+        },
+    }
+
+
 @router.post("/importar")
 async def importar_extracto(
     archivo: UploadFile = File(...),

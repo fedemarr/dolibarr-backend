@@ -14,6 +14,9 @@ class MovimientoBancarioParsado:
     referencia: Optional[str]
     tipo: str                   # DEBITO o CREDITO
     datos_raw: dict = field(default_factory=dict)
+    codigo_cuenta: str = ""
+    nombre_cuenta: str = ""
+    regla_aplicada: str = ""
 
 
 class ParserBancarioBase:

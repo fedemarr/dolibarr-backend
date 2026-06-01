@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 from typing import Optional
 from app.modules.banking.parsers.base import ParserBancarioBase, MovimientoBancarioParsado
+from app.modules.banking.reglas_galicia import clasificar_movimiento
 
 NOMBRES_FECHA = {"fecha", "date", "fecha operacion", "fecha mov", "fecha_movimiento", "fecha_operacion"}
 NOMBRES_MONTO = {"importe", "monto", "amount"}
@@ -97,15 +98,21 @@ class CSVParser(ParserBancarioBase):
                 tipo = "CREDITO" if monto >= 0 else "DEBITO"
                 descripcion = fila.get(col_desc, "") if col_desc else str(fila)
                 referencia = fila.get(col_ref, "") if col_ref else None
+                desc_limpia = (descripcion or "").strip() or "Sin descripcion"
+
+                regla = clasificar_movimiento(desc_limpia, tipo)
 
                 movimientos.append(MovimientoBancarioParsado(
                     fecha=fecha,
                     fecha_valor=None,
                     monto=monto,
-                    descripcion=(descripcion or "").strip() or "Sin descripcion",
+                    descripcion=desc_limpia,
                     referencia=referencia.strip() if referencia else None,
                     tipo=tipo,
                     datos_raw=dict(fila),
+                    codigo_cuenta=regla["codigo_cuenta"],
+                    nombre_cuenta=regla["nombre_cuenta"],
+                    regla_aplicada=regla["nombre"],
                 ))
             except Exception as e:
                 errores.append(f"Fila {i}: {str(e)}")

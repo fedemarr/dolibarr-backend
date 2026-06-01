@@ -165,3 +165,70 @@ def conciliar_facturas_clientes(org_id: str, movimiento_ids: list) -> dict:
 def importar_movimientos_bancarios(*args, **kwargs) -> dict:
     """Placeholder — la importación se hace via API REST, no por esta task."""
     return {"estado": "usar_api_rest", "mensaje": "Importar via POST /api/v1/bancario/importar"}
+
+
+async def _sincronizar_movimientos_dolibarr_async(
+    org_id: str,
+    movimiento_ids: list[str],
+) -> dict:
+    """
+    Para cada movimiento bancario importado, crea el registro
+    correspondiente en Dolibarr con la cuenta contable correcta.
+    Este es el proceso que el cliente hacía a mano (los 3000 registros).
+    """
+    from sqlalchemy import select
+    from app.modules.documents.models import MovimientoBancario
+    from app.modules.dolibarr.client import ClienteDolibarr
+    from app.modules.banking.reglas_galicia import clasificar_movimiento
+    import uuid
+
+    resumen = {"procesados": 0, "creados_en_dolibarr": 0, "errores": 0}
+
+    async with SessionLocal() as db:
+        ids_uuid = [uuid.UUID(mid) for mid in movimiento_ids]
+        r = await db.execute(
+            select(MovimientoBancario).where(
+                MovimientoBancario.id.in_(ids_uuid)
+            )
+        )
+        movimientos = r.scalars().all()
+
+        async with ClienteDolibarr() as cliente:
+            for mov in movimientos:
+                resumen["procesados"] += 1
+                try:
+                    regla = clasificar_movimiento(
+                        mov.descripcion or "",
+                        mov.tipo_movimiento or "DEBITO",
+                    )
+                    monto = float(mov.monto)
+                    resultado = await cliente.crear_movimiento_bancario({
+                        "bankaccount_id": 1,
+                        "date": mov.fecha_movimiento.strftime("%Y-%m-%d"),
+                        "label": mov.descripcion or "Sin descripción",
+                        "amount": monto,
+                        "account_number": regla["codigo_cuenta"],
+                        "num_chq": mov.referencia or "",
+                    })
+                    if resultado is not None:
+                        resumen["creados_en_dolibarr"] += 1
+                        logger.info(
+                            f"[BANK] Movimiento creado en Dolibarr: "
+                            f"{mov.descripcion} → {regla['codigo_cuenta']} "
+                            f"({regla['nombre_cuenta']})"
+                        )
+                    else:
+                        resumen["errores"] += 1
+                except Exception as e:
+                    logger.warning(f"[BANK] Error: {e}")
+                    resumen["errores"] += 1
+
+    return resumen
+
+
+@app_celery.task(name="app.workers.bank_tasks.sincronizar_movimientos_dolibarr")
+def sincronizar_movimientos_dolibarr(org_id: str, movimiento_ids: list) -> dict:
+    """Task: crea movimientos bancarios en Dolibarr con cuentas contables automáticas."""
+    return _ejecutar_async(
+        _sincronizar_movimientos_dolibarr_async(org_id, movimiento_ids)
+    )
