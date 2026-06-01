@@ -33,3 +33,55 @@ def construir_payload_factura_proveedor(
 async def crear_factura(cliente: ClienteDolibarr, payload: dict) -> dict:
     """Crea una factura proveedor llamando al cliente Dolibarr."""
     return await cliente.crear_factura_proveedor(payload)
+
+
+async def obtener_facturas_pendientes(cliente: ClienteDolibarr, limite: int = 500) -> list[dict]:
+    """
+    Obtiene facturas a clientes con estado pendiente de pago desde Dolibarr.
+    Status 1 = validada/no pagada en Dolibarr.
+    """
+    try:
+        # status=1 = validated/unpaid en Dolibarr
+        respuesta = await cliente._cliente.get(
+            "/invoices",
+            params={"status": "1", "limit": limite, "sortfield": "t.rowid", "sortorder": "DESC"}
+        )
+        if respuesta.status_code == 200:
+            datos = respuesta.json()
+            if isinstance(datos, list):
+                return datos
+        return []
+    except Exception:
+        return []
+
+
+async def registrar_pago_factura(
+    cliente: ClienteDolibarr,
+    id_factura: int,
+    monto: float,
+    fecha: str,
+    cuenta_bancaria: str = "",
+    nota: str = "Pago automático detectado en extracto bancario",
+) -> dict | None:
+    """
+    Registra un pago en una factura de Dolibarr.
+    Retorna el resultado o None si falla.
+    """
+    try:
+        payload = {
+            "datepaye": fecha,
+            "paymentid": 6,  # 6 = transferencia bancaria en Dolibarr
+            "closepaidinvoices": "yes",
+            "accountid": 1,  # cuenta bancaria principal
+            "num_paiement": "",
+            "comment": nota,
+            "chqemetteur": "",
+            "chqbank": cuenta_bancaria,
+            "amounts": {str(id_factura): monto},
+        }
+        respuesta = await cliente._cliente.post("/payments", json=payload)
+        if respuesta.status_code in (200, 201):
+            return respuesta.json()
+        return None
+    except Exception:
+        return None

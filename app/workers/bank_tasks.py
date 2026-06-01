@@ -1,12 +1,167 @@
-# Placeholder de tareas relacionadas a movimientos bancarios.
-# Sera implementado en Sesion 2 (parseo de extractos CSV/OFX/XLS).
+# Tareas Celery para procesamiento de movimientos bancarios
+import asyncio
+import logging
+from datetime import datetime, timezone
+from decimal import Decimal
+
 from app.workers.celery_app import app_celery
+from app.core.database import SessionLocal
+
+logger = logging.getLogger(__name__)
+
+
+def _ejecutar_async(coro):
+    """Wrapper seguro para correr código async desde Celery en Python 3.14."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        try:
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
+
+
+async def _conciliar_facturas_clientes_async(org_id: str, movimiento_ids: list[str]) -> dict:
+    """
+    Para cada crédito bancario recién importado, busca en Dolibarr si hay
+    una factura pendiente que coincida y la marca como pagada automáticamente.
+    """
+    from sqlalchemy import select
+    from app.modules.documents.models import MovimientoBancario
+    from app.modules.dolibarr.client import ClienteDolibarr
+    from app.modules.dolibarr.invoices import obtener_facturas_pendientes, registrar_pago_factura
+    from app.modules.dolibarr.invoice_matcher import calcular_score_factura, clasificar_confianza_factura
+    import uuid
+
+    resumen = {"procesados": 0, "auto_pagados": 0, "sugerencias": 0, "errores": 0}
+
+    async with SessionLocal() as db:
+        # Cargar solo los movimientos de crédito recién importados
+        ids_uuid = [uuid.UUID(mid) for mid in movimiento_ids]
+        r = await db.execute(
+            select(MovimientoBancario).where(
+                MovimientoBancario.id.in_(ids_uuid),
+                MovimientoBancario.tipo_movimiento == "CREDITO",
+            )
+        )
+        creditos = r.scalars().all()
+
+        if not creditos:
+            return resumen
+
+        # Obtener facturas pendientes de Dolibarr
+        async with ClienteDolibarr() as cliente:
+            facturas = await obtener_facturas_pendientes(cliente)
+
+        if not facturas:
+            logger.info("[BANK] No hay facturas pendientes en Dolibarr")
+            return resumen
+
+        logger.info(f"[BANK] Procesando {len(creditos)} créditos contra {len(facturas)} facturas pendientes")
+
+        for credito in creditos:
+            resumen["procesados"] += 1
+            mejor_score = 0.0
+            mejor_factura = None
+            mejor_desglose = {}
+
+            for factura in facturas:
+                try:
+                    monto_factura = float(factura.get("montttc") or factura.get("total_ttc") or 0)
+                    nombre_tercero = factura.get("socnom") or factura.get("nom") or ""
+                    fecha_factura_str = factura.get("date") or factura.get("datef") or ""
+
+                    # Parsear fecha de factura
+                    fecha_factura = None
+                    if fecha_factura_str:
+                        try:
+                            from datetime import date
+                            ts = int(fecha_factura_str)
+                            fecha_factura = datetime.fromtimestamp(ts).date()
+                        except Exception:
+                            pass
+
+                    score, desglose = calcular_score_factura(
+                        monto_banco=float(credito.monto),
+                        descripcion_banco=credito.descripcion or "",
+                        fecha_banco=credito.fecha_movimiento,
+                        monto_factura=monto_factura,
+                        nombre_tercero=nombre_tercero,
+                        fecha_factura=fecha_factura,
+                    )
+
+                    if score > mejor_score:
+                        mejor_score = score
+                        mejor_factura = factura
+                        mejor_desglose = desglose
+                except Exception as e:
+                    logger.warning(f"[BANK] Error evaluando factura: {e}")
+                    continue
+
+            if not mejor_factura:
+                continue
+
+            confianza = clasificar_confianza_factura(mejor_score)
+            factura_id = int(mejor_factura.get("id") or 0)
+            factura_ref = mejor_factura.get("ref") or str(factura_id)
+
+            if mejor_score >= 0.80:
+                # Auto-pagar la factura en Dolibarr
+                logger.info(f"[BANK] Auto-pagando factura {factura_ref} (score={mejor_score:.2f})")
+                async with ClienteDolibarr() as cliente:
+                    resultado = await registrar_pago_factura(
+                        cliente=cliente,
+                        id_factura=factura_id,
+                        monto=float(credito.monto),
+                        fecha=credito.fecha_movimiento.strftime("%Y-%m-%d"),
+                        cuenta_bancaria=credito.cuenta_bancaria,
+                        nota=f"Pago automático detectado en extracto bancario — {credito.descripcion}",
+                    )
+
+                if resultado is not None:
+                    # Marcar movimiento bancario como conciliado
+                    credito.conciliado = True
+                    credito.conciliado_en = datetime.now(timezone.utc)
+                    credito.confianza_match = confianza
+                    credito.score_match = Decimal(str(round(mejor_score, 4)))
+                    resumen["auto_pagados"] += 1
+                    logger.info(f"[BANK] Factura {factura_ref} marcada como pagada en Dolibarr ✅")
+                else:
+                    logger.warning(f"[BANK] No se pudo registrar pago en Dolibarr para factura {factura_ref}")
+                    resumen["errores"] += 1
+
+            elif mejor_score >= 0.60:
+                # Guardar sugerencia sin pagar automáticamente
+                credito.confianza_match = confianza
+                credito.score_match = Decimal(str(round(mejor_score, 4)))
+                resumen["sugerencias"] += 1
+                logger.info(f"[BANK] Sugerencia de match para factura {factura_ref} (score={mejor_score:.2f})")
+
+        await db.commit()
+
+    return resumen
+
+
+@app_celery.task(name="app.workers.bank_tasks.conciliar_facturas_clientes")
+def conciliar_facturas_clientes(org_id: str, movimiento_ids: list) -> dict:
+    """
+    Task Celery: cuando se importan créditos bancarios, busca facturas pendientes
+    en Dolibarr y las marca como pagadas si hay match.
+    """
+    logger.info(f"[BANK] Iniciando conciliación de facturas para org {org_id}, {len(movimiento_ids)} movimientos")
+    resultado = _ejecutar_async(_conciliar_facturas_clientes_async(org_id, movimiento_ids))
+    logger.info(f"[BANK] Resultado: {resultado}")
+    return resultado
 
 
 @app_celery.task(name="app.workers.bank_tasks.importar_movimientos_bancarios")
 def importar_movimientos_bancarios(*args, **kwargs) -> dict:
-    """Placeholder - importar extractos bancarios (CSV / OFX / XLS). Pendiente Sesion 2."""
-    return {
-        "estado": "pendiente_implementacion",
-        "mensaje": "Importacion de movimientos bancarios sera implementada en Sesion 2",
-    }
+    """Placeholder — la importación se hace via API REST, no por esta task."""
+    return {"estado": "usar_api_rest", "mensaje": "Importar via POST /api/v1/bancario/importar"}

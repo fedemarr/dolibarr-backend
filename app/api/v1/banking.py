@@ -40,6 +40,39 @@ async def importar_extracto(
     return {"exito": True, "datos": resultado}
 
 
+@router.get("/facturas-pendientes")
+async def obtener_facturas_pendientes_dolibarr(
+    usuario=Depends(obtener_usuario_actual),
+):
+    """
+    Retorna las facturas a clientes pendientes de pago directamente desde Dolibarr.
+    Útil para ver qué facturas están esperando cobro.
+    """
+    from app.modules.dolibarr.client import ClienteDolibarr
+    from app.modules.dolibarr.invoices import obtener_facturas_pendientes
+
+    try:
+        async with ClienteDolibarr() as cliente:
+            facturas = await obtener_facturas_pendientes(cliente)
+        return {
+            "exito": True,
+            "datos": [
+                {
+                    "id": f.get("id"),
+                    "ref": f.get("ref"),
+                    "tercero": f.get("socnom") or f.get("nom"),
+                    "monto": float(f.get("montttc") or f.get("total_ttc") or 0),
+                    "fecha": f.get("date"),
+                    "estado": f.get("statut"),
+                }
+                for f in facturas[:100]
+            ],
+            "meta": {"total": len(facturas)},
+        }
+    except Exception as e:
+        return {"exito": False, "error": {"codigo": "ERROR_DOLIBARR", "mensaje": str(e)}}
+
+
 @router.get("/movimientos")
 async def listar_movimientos(
     conciliado: Optional[bool] = Query(None),

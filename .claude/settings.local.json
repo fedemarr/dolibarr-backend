@@ -10,7 +10,8 @@
       "PowerShell(Set-Location \"C:\\\\proyectos\\\\dolibarr-frontend\"; $comps = @\\(\"button\",\"input\",\"label\",\"select\",\"dialog\",\"table\",\"badge\",\"card\",\"dropdown-menu\",\"sheet\",\"tooltip\",\"alert-dialog\",\"form\",\"separator\",\"skeleton\",\"progress\",\"popover\"\\); foreach \\($c in $comps\\) { Write-Output \"===INSTALANDO $c===\"; npx --yes shadcn@latest add $c --yes --overwrite 2>&1 | Out-String })",
       "PowerShell(Get-ChildItem \"C:\\\\proyectos\\\\dolibarr-frontend\\\\src\" -Recurse -Name | Where-Object { $_ -notmatch \"__pycache__|\\\\.pyc|node_modules\" } | Sort-Object | Select-Object -First 80)",
       "PowerShell(Start-Process powershell -ArgumentList \"-NoExit\", \"-Command\", \"cd 'C:\\\\proyectos\\\\dolibarr-frontend'; npm run dev\" -WindowStyle Normal; Start-Sleep -Seconds 8; Write-Output \"Servidor iniciado\")",
-      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue)"
+      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue)",
+      "Bash(./venv/Scripts/python.exe -m pytest tests/ -q)"
     ],
     "additionalDirectories": [
       "C:\\proyectos\\dolibarr-frontend",

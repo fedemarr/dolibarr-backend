@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"https://web-production-0134c.up.railway.app/health\" -TimeoutSec 15; $r.Content } catch { \"Error: $_\" })",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"https://web-production-0134c.up.railway.app/health\" -TimeoutSec 30; $r.Content } catch { \"Error: $_\" })",
+      "Bash(curl -s \"https://web-production-0134c.up.railway.app/api/v1/auth/login\" -X POST -H \"Content-Type: application/json\" -d '{\"email\":\"admin@demo.com\",\"password\":\"Admin1234!\"}')"
+    ]
+  }
+}

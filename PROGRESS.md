@@ -233,3 +233,28 @@ npm run dev -- --port 3002
 3. Deploy frontend en Vercel (ver DEPLOY.md)
 4. Obtener API key real de Dolibarr y actualizar variable en Railway
 5. Conectar Slack webhook y Resend para notificaciones reales
+
+## Sesión 5 — Conciliación automática de facturas a clientes
+
+- ✅ [S5-PASO 1] Archivos existentes leídos
+- ✅ [S5-PASO 2] Motor de matching invoice_matcher.py creado
+- ✅ [S5-PASO 3] Dolibarr invoices.py actualizado con obtener_facturas_pendientes y registrar_pago_factura
+- ✅ [S5-PASO 4] bank_tasks.py implementado con task conciliar_facturas_clientes
+- ✅ [S5-PASO 5] banking/service.py dispara conciliación después de importar
+- ✅ [S5-PASO 6] Endpoint GET /api/v1/bancario/facturas-pendientes agregado
+- ✅ [S5-PASO 7] Tests del matcher creados y pasando
+- ✅ [S5-PASO 8] 29/29 tests pasando
+- ✅ [S5-PASO 9] Commit y push a GitHub
+
+### Cómo funciona
+1. Usuario importa CSV del Banco Galicia en /bancario
+2. El sistema detecta los créditos (cobros de clientes)
+3. Celery worker busca facturas pendientes en Dolibarr
+4. Cruza por monto (60%) + nombre del cliente en descripción (30%) + fecha (10%)
+5. Score >= 0.80 → marca la factura como PAGADA en Dolibarr automáticamente
+6. Score 0.60-0.79 → muestra sugerencia para confirmar manualmente
+
+### Pendiente para Sesión 6
+- Importar facturas de venta desde AFIP via web services (wsfe)
+- Importar movimientos bancarios directo a Dolibarr con cuenta contable asignada
+- UI para ver facturas pendientes y matches sugeridos

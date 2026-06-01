@@ -35,6 +35,7 @@ async def importar_archivo(
 
     importados = 0
     duplicados = 0
+    creditos_ids: list[str] = []  # IDs de movimientos CREDITO recien creados
 
     for mov in movimientos_parseados:
         try:
@@ -49,13 +50,24 @@ async def importar_archivo(
                 "datos_raw": mov.datos_raw,
                 "conciliado": False,
             }
-            _, es_nuevo = await repository.crear_movimiento(datos, org_id, db)
+            movimiento, es_nuevo = await repository.crear_movimiento(datos, org_id, db)
             if es_nuevo:
                 importados += 1
+                # Recolectar IDs de creditos (cobros de clientes) para conciliacion
+                if (mov.tipo or "").upper() == "CREDITO":
+                    creditos_ids.append(str(movimiento.id))
             else:
                 duplicados += 1
         except Exception as e:
             errores_parseo.append(f"Error al guardar movimiento: {e}")
+
+    # Disparar conciliación de facturas para los créditos recién importados
+    if importados > 0 and creditos_ids:
+        try:
+            from app.workers.bank_tasks import conciliar_facturas_clientes
+            conciliar_facturas_clientes.delay(str(org_id), creditos_ids)
+        except Exception:
+            pass
 
     return {
         "importados": importados,
