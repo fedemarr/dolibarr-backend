@@ -5,8 +5,8 @@ from app.core.config import config
 
 app_celery = Celery(
     "automatizacion_dolibarr",
-    broker=config.REDIS_URL,
-    backend=config.REDIS_URL,
+    broker=config.REDIS_URL_EFECTIVA,
+    backend=config.REDIS_URL_EFECTIVA,
     include=[
         "app.workers.pdf_tasks",
         "app.workers.bank_tasks",

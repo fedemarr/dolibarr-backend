@@ -91,21 +91,16 @@ def crear_app() -> FastAPI:
             estado["servicios"]["base_datos"] = f"error: {str(e)[:100]}"
             estado["estado"] = "degradado"
 
-        # Redis es opcional — solo necesario para workers Celery
+        # Redis — opcional, solo necesario para workers Celery
         try:
-            import os
             import redis as redis_sync
-            redis_url = (
-                os.getenv("REDIS_URL")
-                or os.getenv("REDIS_PRIVATE_URL")
-                or os.getenv("REDISURL")
-            )
-            if redis_url:
+            redis_url = config.REDIS_URL_EFECTIVA
+            if "localhost" not in redis_url:
                 r = redis_sync.from_url(redis_url, socket_connect_timeout=2)
                 r.ping()
                 estado["servicios"]["redis"] = "ok"
             else:
-                estado["servicios"]["redis"] = "no configurado (workers Celery desactivados)"
+                estado["servicios"]["redis"] = "no configurado"
         except Exception as e:
             estado["servicios"]["redis"] = f"error: {str(e)[:80]}"
 

@@ -19,6 +19,12 @@ class Configuracion(BaseSettings):
     DB_PASSWORD: str = "automation_pass_dev"
 
     REDIS_URL: str = "redis://localhost:6379/0"
+    APP_REDIS_URL: str = ""  # nombre alternativo para Railway (evita conflicto con plugin)
+
+    @property
+    def REDIS_URL_EFECTIVA(self) -> str:
+        # APP_REDIS_URL tiene prioridad (evita conflicto con plugin de Railway)
+        return self.APP_REDIS_URL or self.REDIS_URL
 
     DOLIBARR_URL: str
     DOLIBARR_API_KEY: str
