@@ -61,6 +61,16 @@ def crear_app() -> FastAPI:
     app.include_router(rules.router, tags=["reglas"])
     app.include_router(reports.router, tags=["reportes"])
 
+    @app.get("/debug-env", tags=["sistema"])
+    async def debug_env():
+        """Solo para debug — muestra variables de entorno relacionadas a Redis y DB."""
+        import os
+        return {
+            k: v[:30] + "..." if len(v) > 30 else v
+            for k, v in os.environ.items()
+            if any(x in k.upper() for x in ["REDIS", "DATABASE", "REDIS_URL"])
+        }
+
     @app.get("/health", tags=["sistema"])
     async def verificar_estado():
         """Health check — siempre retorna 200 para que Railway no mate el proceso."""
