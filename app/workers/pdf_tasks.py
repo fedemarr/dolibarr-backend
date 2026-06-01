@@ -45,17 +45,22 @@ def _ejecutar_async(coro):
 
 async def _procesar_pdf_async(documento_id: str) -> None:
     """Logica principal del procesamiento (corrida desde sync Celery)."""
+    import logging
+    logger = logging.getLogger(__name__)
     doc_uuid = uuid.UUID(documento_id)
 
     async with SessionLocal() as db:
         try:
             # 1) Cargar documento
+            logger.info(f"[PDF] Cargando documento {doc_uuid} de la DB")
             resultado = await db.execute(
                 select(DocumentoImpositivo).where(DocumentoImpositivo.id == doc_uuid)
             )
             documento = resultado.scalar_one_or_none()
             if documento is None:
+                logger.warning(f"[PDF] Documento {doc_uuid} no encontrado en DB")
                 return
+            logger.info(f"[PDF] Documento encontrado, estado={documento.estado}")
 
             # 2) Transicion a PROCESANDO
             await transicionar_y_registrar(
@@ -155,10 +160,18 @@ async def _procesar_pdf_async(documento_id: str) -> None:
                 pass
 
 
-@app_celery.task(name="app.workers.pdf_tasks.procesar_pdf")
-def procesar_pdf(documento_id: str) -> str:
+@app_celery.task(name="app.workers.pdf_tasks.procesar_pdf", bind=True)
+def procesar_pdf(self, documento_id: str) -> str:
     """Task Celery: procesa un PDF (OCR + clasificacion + asignacion contable)."""
-    _ejecutar_async(_procesar_pdf_async(documento_id))
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"[PDF] Iniciando procesamiento de documento {documento_id}")
+    try:
+        _ejecutar_async(_procesar_pdf_async(documento_id))
+        logger.info(f"[PDF] Procesamiento completado para {documento_id}")
+    except Exception as e:
+        logger.error(f"[PDF] Error en procesamiento de {documento_id}: {e}", exc_info=True)
+        raise
     return documento_id
 
 
