@@ -91,25 +91,23 @@ def crear_app() -> FastAPI:
             estado["servicios"]["base_datos"] = f"error: {str(e)[:100]}"
             estado["estado"] = "degradado"
 
-        # Verificar Redis
+        # Redis es opcional — solo necesario para workers Celery
         try:
             import os
             import redis as redis_sync
-            # Railway puede usar distintos nombres para la URL de Redis
             redis_url = (
                 os.getenv("REDIS_URL")
                 or os.getenv("REDIS_PRIVATE_URL")
                 or os.getenv("REDISURL")
-                or os.getenv("REDIS_TLS_URL")
-                or config.REDIS_URL
             )
-            estado["debug_redis_url"] = redis_url[:40] + "..."
-            r = redis_sync.from_url(redis_url, socket_connect_timeout=2)
-            r.ping()
-            estado["servicios"]["redis"] = "ok"
+            if redis_url:
+                r = redis_sync.from_url(redis_url, socket_connect_timeout=2)
+                r.ping()
+                estado["servicios"]["redis"] = "ok"
+            else:
+                estado["servicios"]["redis"] = "no configurado (workers Celery desactivados)"
         except Exception as e:
-            estado["servicios"]["redis"] = f"error: {str(e)[:100]}"
-            estado["estado"] = "degradado"
+            estado["servicios"]["redis"] = f"error: {str(e)[:80]}"
 
         return estado
 
