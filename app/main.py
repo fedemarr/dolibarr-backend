@@ -63,12 +63,11 @@ def crear_app() -> FastAPI:
 
     @app.get("/debug-env", tags=["sistema"])
     async def debug_env():
-        """Solo para debug — muestra variables de entorno relacionadas a Redis y DB."""
+        """Solo para debug — muestra todas las variables de entorno."""
         import os
         return {
-            k: v[:30] + "..." if len(v) > 30 else v
-            for k, v in os.environ.items()
-            if any(x in k.upper() for x in ["REDIS", "DATABASE", "REDIS_URL"])
+            k: v[:40] + "..." if len(v) > 40 else v
+            for k, v in sorted(os.environ.items())
         }
 
     @app.get("/health", tags=["sistema"])
