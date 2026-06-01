@@ -1,5 +1,7 @@
 # Servicio de negocio para documentos impositivos
 import uuid
+import base64
+import tempfile
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -11,19 +13,16 @@ from app.modules.documents.models import DocumentoImpositivo
 from app.modules.documents import repository
 
 
-# Directorio local donde se guardan los PDFs (en produccion seria S3)
-DIRECTORIO_PDFS = Path("C:/tmp/dolibarr_pdfs")
-
-
 async def subir_pdf(
     archivo: UploadFile,
     org_id: uuid.UUID,
     db: AsyncSession,
 ) -> DocumentoImpositivo:
     """
-    Valida que sea un PDF, guarda en disco local, crea registro en DB y encola en Celery.
+    Valida que sea un PDF, guarda el contenido en la DB y encola en Celery.
+    El contenido se guarda en datos_ocr_raw para que el worker pueda accederlo
+    sin necesidad de compartir filesystem entre contenedores.
     """
-    # Validar tipo de archivo por extension y content_type
     if not archivo.filename or not archivo.filename.lower().endswith(".pdf"):
         raise ErrorApp(
             status_code=400,
@@ -37,26 +36,29 @@ async def subir_pdf(
             message="El archivo debe ser un PDF valido",
         )
 
-    # Crear directorio si no existe
-    DIRECTORIO_PDFS.mkdir(parents=True, exist_ok=True)
-
-    # Generar nombre unico para el archivo
-    doc_id = uuid.uuid4()
-    nombre_archivo = f"{doc_id}.pdf"
-    ruta_local = DIRECTORIO_PDFS / nombre_archivo
-
-    # Guardar archivo en disco
     contenido = await archivo.read()
-    with open(ruta_local, "wb") as f:
-        f.write(contenido)
 
-    # Crear registro en base de datos
+    # Limitar tamaño a 10MB
+    if len(contenido) > 10 * 1024 * 1024:
+        raise ErrorApp(
+            status_code=400,
+            code="ARCHIVO_DEMASIADO_GRANDE",
+            message="El archivo supera el tamaño máximo de 10 MB",
+        )
+
+    doc_id = uuid.uuid4()
+
+    # Guardar contenido del PDF en base64 dentro de datos_ocr_raw
+    # Esto permite que el worker acceda al PDF sin compartir filesystem
+    pdf_b64 = base64.b64encode(contenido).decode("utf-8")
+
     documento = DocumentoImpositivo(
         id=doc_id,
         org_id=org_id,
         nombre_original=archivo.filename,
-        clave_s3=str(ruta_local),
+        clave_s3=f"db:{doc_id}",  # indica que el contenido esta en la DB
         estado="UPLOADED",
+        datos_ocr_raw={"pdf_base64": pdf_b64},
         log_procesamiento=[],
         creado_en=datetime.now(timezone.utc),
         actualizado_en=datetime.now(timezone.utc),
@@ -69,7 +71,6 @@ async def subir_pdf(
         from app.workers.pdf_tasks import procesar_pdf
         procesar_pdf.delay(str(doc_id))
     except Exception:
-        # Si Celery/Redis no esta disponible, el documento queda en UPLOADED
         pass
 
     return documento
@@ -91,7 +92,6 @@ async def aprobar(
     documento = await repository.obtener_por_id(id, org_id, db)
 
     if correcciones:
-        # Filtrar None
         correcciones_limpias = {k: v for k, v in correcciones.items() if v is not None}
         if correcciones_limpias:
             await repository.actualizar_campos(id, correcciones_limpias, db)
@@ -106,7 +106,6 @@ async def aprobar(
         detalle="Aprobado por operador",
     )
 
-    # Encolar sincronizacion con Dolibarr
     try:
         from app.workers.pdf_tasks import sincronizar_con_dolibarr
         sincronizar_con_dolibarr.delay(str(id))

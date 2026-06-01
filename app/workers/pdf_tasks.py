@@ -68,13 +68,33 @@ async def _procesar_pdf_async(documento_id: str) -> None:
             )
             await db.commit()
 
-            # 3) Pipeline OCR + parsing + asignacion contable
-            ruta = Path(documento.clave_s3)
-            resultado_proc = await procesar_documento(
-                ruta_pdf=ruta,
-                org_id=str(documento.org_id),
-                db=db,
-            )
+            # 3) Obtener el PDF — desde DB (base64) o desde filesystem local
+            import base64, tempfile, os
+            datos_raw = documento.datos_ocr_raw or {}
+            pdf_b64 = datos_raw.get("pdf_base64") if isinstance(datos_raw, dict) else None
+
+            if pdf_b64:
+                # Contenido guardado en DB — escribir a archivo temporal para el OCR
+                contenido_pdf = base64.b64decode(pdf_b64)
+                tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+                tmp.write(contenido_pdf)
+                tmp.close()
+                ruta = Path(tmp.name)
+                usar_tmp = True
+            else:
+                # Fallback: leer desde filesystem local (desarrollo)
+                ruta = Path(documento.clave_s3)
+                usar_tmp = False
+
+            try:
+                resultado_proc = await procesar_documento(
+                    ruta_pdf=ruta,
+                    org_id=str(documento.org_id),
+                    db=db,
+                )
+            finally:
+                if usar_tmp and ruta.exists():
+                    os.unlink(ruta)  # limpiar archivo temporal
 
             # 4) Actualizar campos del documento
             for campo, valor in resultado_proc.items():
