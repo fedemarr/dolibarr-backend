@@ -258,3 +258,58 @@ npm run dev -- --port 3002
 - Importar facturas de venta desde AFIP via web services (wsfe)
 - Importar movimientos bancarios directo a Dolibarr con cuenta contable asignada
 - UI para ver facturas pendientes y matches sugeridos
+
+## Sesión 6 — Reglas contables reales + sync con Dolibarr
+
+- ✅ [S6-PASO 1] reglas_galicia.py creado: PLAN_DE_CUENTAS completo (70+ cuentas) + 29 reglas contables con prioridad, tipo, patrones y función clasificar_movimiento()
+- ✅ [S6-PASO 2] base.py actualizado: MovimientoBancarioParsado incluye campos opcionales codigo_cuenta, nombre_cuenta, regla_aplicada
+- ✅ [S6-PASO 2] csv_parser.py actualizado: llama a clasificar_movimiento() en cada fila y popula los campos contables
+- ✅ [S6-PASO 3] dolibarr/client.py: nuevo método crear_movimiento_bancario() — POST /bankaccounts/{id}/lines
+- ✅ [S6-PASO 4] bank_tasks.py: nueva Celery task sincronizar_movimientos_dolibarr() — reemplaza el proceso manual de 3.000 registros del cliente
+- ✅ [S6-PASO 5] banking/service.py: dispara sincronización para TODOS los movimientos (no solo créditos) tras cada importación
+- ✅ [S6-PASO 6] banking.py: endpoint POST /api/v1/bancario/clasificar para probar clasificación contable
+- ✅ [S6-PASO 7] tests/unit/test_reglas_galicia.py: 29 tests unitarios cubriendo todas las reglas
+- ✅ [S6-PASO 8] 58/58 tests pasando (29 previos + 29 nuevos)
+- ✅ [S6-PASO 9] Commit cf16b61 pusheado a GitHub
+
+### Las 29 reglas implementadas
+
+| Prioridad | Regla | Cuenta |
+|-----------|-------|--------|
+| 10 | Impuesto débito Ley 25413 | 5.5.02 |
+| 11 | Impuesto crédito Ley 25413 | 1.1.3.401 |
+| 12 | IIBB SIRCREB | 1.1.3.204 |
+| 13 | IIBB general | 5.5.01 |
+| 14 | Percepción IVA | 1.1.3.106 |
+| 15 | IVA bancario | 2.1.3.101 |
+| 16 | Percepción RG 5617/24 | 1.1.3.205 |
+| 17 | Impuesto de sellos | 5.5.04 |
+| 18 | Intereses saldos deudores | 5.4.02 |
+| 20 | Transferencia a AFIP | 5.4.01 |
+| 30 | Cobro de cliente local | 4.1.05 |
+| 31 | ECHEQ cobrado | 4.1.05 |
+| 32 | Cobro del exterior | 4.2.01 |
+| 33 | Anticipo de cliente | 2.1.1.201 |
+| 40 | Pago a proveedor (TRF) | 5.1.01 |
+| 41 | Pago proveedor Galicia | 5.1.01 |
+| 42 | Alquiler | 5.2.04 |
+| 43 | Seguro | 5.2.16 |
+| 50 | Sueldos | 5.2.01 |
+| 51 | SUSS | 2.1.2.102 |
+| 52 | Honorarios | 5.2.03 |
+| 60 | Suscripción FIMA | 1.1.5.102 |
+| 61 | Rescate FIMA | 1.1.5.102 |
+| 62 | Plazo fijo | 1.1.5.101 |
+| 70 | Comisiones bancarias | 5.4.03 |
+| 80 | Compra débito/tarjeta | 5.2.15 |
+| 81 | Débito automático servicios | 5.2.18 |
+| 82 | Pago de servicios | 5.2.18 |
+| 83 | Pago Visa empresa | 5.2.15 |
+| 90 | Diferencia de cambio | 5.6.01 |
+| 999 | Fallback sin clasificar | 6.0 |
+
+### Nota para producción
+
+`bankaccount_id=1` en sincronizar_movimientos_dolibarr debe reemplazarse con el ID real
+de la cuenta Galicia en el Dolibarr del cliente. Obtenerlo via GET /bankaccounts en la API
+de Dolibarr usando la DOLIBARR_API_KEY del cliente.
