@@ -1,4 +1,7 @@
 # Configuracion principal de Celery
+import os
+os.environ["CELERY_WORKER_RUNNING"] = "1"  # indica a database.py que use NullPool
+
 from celery import Celery
 from app.core.config import config
 

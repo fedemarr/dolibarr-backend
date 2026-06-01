@@ -9,7 +9,14 @@ from app.core.config import config
 _engine_kwargs = {
     "echo": False,  # silencioso en tests; en dev se controla por logger
 }
-if "PYTEST_CURRENT_TEST" in os.environ or os.environ.get("DOLIB_NO_POOL"):
+# Usar NullPool en pytest, workers Celery y cuando se pida explicitamente.
+# Los workers crean un event loop nuevo por tarea — el pool de asyncpg no puede
+# reutilizarse entre loops distintos, causando fallas silenciosas.
+_es_worker = os.environ.get("CELERY_WORKER_RUNNING") == "1"
+_es_test = "PYTEST_CURRENT_TEST" in os.environ
+_sin_pool = os.environ.get("DOLIB_NO_POOL") == "1"
+
+if _es_worker or _es_test or _sin_pool:
     _engine_kwargs["poolclass"] = NullPool
 else:
     _engine_kwargs["pool_pre_ping"] = True
