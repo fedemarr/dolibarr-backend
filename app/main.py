@@ -39,6 +39,7 @@ def crear_app() -> FastAPI:
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
         "http://127.0.0.1:3002",
+        "https://dolibarr-frontend.vercel.app",
     ]
     frontend_url = os.getenv("FRONTEND_URL")
     if frontend_url:
