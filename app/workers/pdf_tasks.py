@@ -53,10 +53,14 @@ async def _procesar_pdf_async(documento_id: str) -> None:
         try:
             # 1) Cargar documento
             logger.info(f"[PDF] Cargando documento {doc_uuid} de la DB")
-            resultado = await db.execute(
-                select(DocumentoImpositivo).where(DocumentoImpositivo.id == doc_uuid)
-            )
-            documento = resultado.scalar_one_or_none()
+            try:
+                resultado = await db.execute(
+                    select(DocumentoImpositivo).where(DocumentoImpositivo.id == doc_uuid)
+                )
+                documento = resultado.scalar_one_or_none()
+            except Exception as db_err:
+                logger.error(f"[PDF] ERROR en query DB: {type(db_err).__name__}: {db_err}", exc_info=True)
+                raise
             if documento is None:
                 logger.warning(f"[PDF] Documento {doc_uuid} no encontrado en DB")
                 return
